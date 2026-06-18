@@ -48,3 +48,7 @@ GoogleService-Info.plist
 build_error.txt
 build_full.txt
 metro_debug.log
+
+# Debug screenshots and logs
+*.png
+gradle_raw*.log
