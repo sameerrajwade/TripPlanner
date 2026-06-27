@@ -75,7 +75,7 @@ export default function WelcomeScreen() {
             colors={[Colors.primary, Colors.primaryDark]}
             style={styles.logoMark}
           >
-            <Text style={styles.logoIcon}>✈️</Text>
+            <Text style={styles.logoIcon}>🌍</Text>
           </LinearGradient>
           <Text style={styles.appName}>FamilyQuest</Text>
           <Text style={styles.tagline}>

@@ -175,7 +175,7 @@ function buildPdfHtml(itinerary: NonNullable<ReturnType<typeof useTripStore.getS
 
 <div class="cover">
   <div class="cover-brand">FamilyQuest · AI-Powered Family Travel</div>
-  <div class="cover-dest">✈️ ${destination}</div>
+  <div class="cover-dest">🌍 ${destination}</div>
   <div class="cover-meta">${dateRange} · ${days.length} day${days.length !== 1 ? 's' : ''} · ${groupDesc}</div>
   <div class="cover-pills">
     ${(tripInput.vibes ?? []).map((v: string) => `<div class="cover-pill">${v}</div>`).join('')}
@@ -391,7 +391,7 @@ export default function ItineraryScreen() {
   if (!currentItinerary) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyEmoji}>✈️</Text>
+        <Text style={styles.emptyEmoji}>🌍</Text>
         <Text style={styles.emptyText}>No itinerary yet.</Text>
         <Button label="Plan a trip" onPress={() => router.push('/(tabs)')} />
       </View>
@@ -434,7 +434,7 @@ export default function ItineraryScreen() {
 
         {/* Hero content */}
         <Animated.View style={[styles.heroContent, { opacity: headerContentOpacity, transform: [{ translateY: headerContentTranslateY }] }]}>
-          <Text style={styles.heroEmoji}>{currentItinerary.heroEmoji ?? '✈️'}</Text>
+          <Text style={styles.heroEmoji}>{currentItinerary.heroEmoji ?? '🌍'}</Text>
           <Text style={styles.heroDestination}>{destination}</Text>
           {/* Date range */}
           <Text style={styles.heroDateRange}>

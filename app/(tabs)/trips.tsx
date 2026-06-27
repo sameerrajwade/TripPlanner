@@ -146,7 +146,7 @@ export default function TripsScreen() {
   const handleShare = async (trip: Itinerary) => {
     try {
       await Share.share({
-        message: `Check out my FamilyQuest trip to ${trip.destination}! ✈️\n${trip.days.length} days · ${trip.tripInput.vibes.join(', ')}\n\nPlanned with FamilyQuest 🌍`,
+        message: `Check out my FamilyQuest trip to ${trip.destination}! 🌍\n${trip.days.length} days · ${trip.tripInput.vibes.join(', ')}\n\nPlanned with FamilyQuest 🌍`,
         title: `${trip.destination} Trip`,
       });
     } catch (_) {}
@@ -214,7 +214,7 @@ export default function TripsScreen() {
             Generate your first family itinerary and save it — it'll appear here forever, even offline.
           </Text>
           <Button
-            label="Plan a trip ✈️"
+            label="Plan a trip 🌍"
             onPress={() => router.push('/(tabs)')}
             style={{ marginTop: Spacing.lg }}
           />
@@ -253,7 +253,7 @@ export default function TripsScreen() {
             onPress={() => router.push('/(tabs)')}
             activeOpacity={0.8}
           >
-            <Text style={styles.planMoreText}>✈️  Plan another adventure</Text>
+            <Text style={styles.planMoreText}>🌍  Plan another adventure</Text>
             <Text style={styles.planMoreArrow}>→</Text>
           </TouchableOpacity>
 

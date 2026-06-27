@@ -1,7 +1,15 @@
+import { useEffect } from 'react';
+import { BackHandler } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Colors, Typography } from '../../constants/theme';
 
 export default function TabsLayout() {
+  // Prevent hardware back from leaving the tabs screen (going to login/welcome)
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => handler.remove();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -21,7 +29,7 @@ export default function TabsLayout() {
         },
       }}
     >
-      <Tabs.Screen name="index"   options={{ title: 'Plan',     tabBarIcon: () => <TabIcon emoji="✈️" /> }} />
+      <Tabs.Screen name="index"   options={{ title: 'Plan',     tabBarIcon: () => <TabIcon emoji="🌍" /> }} />
       <Tabs.Screen name="trips"   options={{ title: 'My Trips', tabBarIcon: () => <TabIcon emoji="🗺️" /> }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile',  tabBarIcon: () => <TabIcon emoji="👤" /> }} />
     </Tabs>
