@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Platform, StatusBar, Share, Image, Alert, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch,
+  Dimensions, Platform, StatusBar, Image, Alert, ActivityIndicator,
 } from 'react-native';
+import RNShare from 'react-native-share';
 import { Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -22,6 +23,28 @@ const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct'
 function shortDate(d: Date | string): string {
   const dt = typeof d === 'string' ? new Date(d) : d;
   return `${MONTH_SHORT[dt.getMonth()]} ${dt.getDate()}`;
+}
+
+// ─── Build Google Maps multi-stop route URL (no API key needed) ───────────────
+// If stayLocation is provided it becomes both the start and end point of the route.
+function buildMapsRouteUrl(destination: string, activities: Activity[], stayLocation?: string): string {
+  const stops = activities
+    .filter(a => a.category !== 'rest' && a.category !== 'transit')
+    .slice(0, 8)
+    .map(a => encodeURIComponent(`${a.title}, ${destination}`));
+
+  const home = stayLocation ? encodeURIComponent(stayLocation) : null;
+
+  if (stops.length === 0) {
+    return home
+      ? `https://www.google.com/maps/dir/${home}/${encodeURIComponent(destination)}/${home}`
+      : `https://maps.google.com/?q=${encodeURIComponent(destination)}`;
+  }
+  if (home) {
+    return `https://www.google.com/maps/dir/${home}/${stops.join('/')}/${home}`;
+  }
+  if (stops.length === 1) return `https://maps.google.com/?q=${stops[0]}`;
+  return `https://www.google.com/maps/dir/${stops.join('/')}`;
 }
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -193,7 +216,11 @@ export default function ItineraryScreen() {
   const [regenError,  setRegenError]  = useState<string | null>(null);
   const [confettiTrigger, setConfettiTrigger] = useState(0);
   const [weather,         setWeather]         = useState<WeatherDay[]>([]);
+  const [showIndoorPlan,  setShowIndoorPlan]  = useState(false);
   const isGuest = !user || user.isGuest;
+
+  const activeDayWeather = weather[activeDay];
+  const activeDayBad     = activeDayWeather ? isBadWeather(activeDayWeather) : false;
   // -1 = activity days, days.length = dining tab
   const DINING_TAB = currentItinerary?.days.length ?? 99;
 
@@ -213,10 +240,24 @@ export default function ItineraryScreen() {
   }, [currentItinerary?.destinationImageQuery]);
 
   // ── Fetch weather forecast for trip dates ─────────────────────────────────
+  const [weatherError, setWeatherError] = useState<'too_far' | 'failed' | null>(null);
   useEffect(() => {
     if (!currentItinerary) return;
     const { destination, tripInput: { startDate, endDate } } = currentItinerary;
-    fetchWeather(destination, startDate, endDate).then(setWeather);
+    setWeather([]);
+    setWeatherError(null);
+
+    // Open-Meteo provides ~16 days ahead. Check if trip is beyond that window.
+    const msUntilStart = (startDate instanceof Date ? startDate : new Date(startDate)).getTime() - Date.now();
+    if (msUntilStart > 16 * 24 * 60 * 60 * 1000) {
+      setWeatherError('too_far');
+      return;
+    }
+
+    fetchWeather(destination, startDate, endDate).then(days => {
+      if (days.length === 0) setWeatherError('failed');
+      else setWeather(days);
+    });
   }, [currentItinerary?.id]);
 
   const scrollHandler = Animated.event(
@@ -262,15 +303,39 @@ export default function ItineraryScreen() {
     }
   };
 
-  // ── Share plain text (fallback) ────────────────────────────────────────────
+  // ── Share itinerary as rich text ──────────────────────────────────────────
   const handleShare = async () => {
     if (!currentItinerary) return;
+    const { destination, days, highlights, tripInput } = currentItinerary;
+    const dateRange = `${shortDate(tripInput.startDate)} – ${shortDate(tripInput.endDate)}`;
+    const group = `${tripInput.adults} adult${tripInput.adults !== 1 ? 's' : ''}${tripInput.kids > 0 ? ` + ${tripInput.kids} kid${tripInput.kids !== 1 ? 's' : ''}` : ''}`;
+
+    const dayLines = days.map(d =>
+      `📅 Day ${d.day} — ${d.theme}\n` +
+      d.activities.map(a => `  ${a.time}  ${a.title} (${a.duration})`).join('\n')
+    ).join('\n\n');
+
+    const highlightLines = highlights.slice(0, 4).map(h => `• ${h}`).join('\n');
+
+    const message =
+      `🌍 ${destination}\n` +
+      `${dateRange} · ${days.length} day${days.length !== 1 ? 's' : ''} · ${group}\n\n` +
+      `${dayLines}\n\n` +
+      `✨ Highlights\n${highlightLines}\n\n` +
+      `Created with FamilyQuest — AI-powered family travel planning`;
+
     try {
-      await Share.share({
-        message: `My FamilyQuest itinerary for ${currentItinerary.destination}! ✈️\n${currentItinerary.days.length} days · ${currentItinerary.tripInput.vibes.join(', ')}\n\nCreated with FamilyQuest 🌍`,
-        title: `${currentItinerary.destination} Trip`,
+      await RNShare.open({
+        title: `${destination} Trip — FamilyQuest`,
+        message,
+        subject: `Our ${destination} itinerary`,
       });
-    } catch (_) {}
+    } catch (err: any) {
+      // User dismissed share sheet — not an error
+      if (!err?.message?.includes('dismiss') && !err?.message?.includes('cancel')) {
+        Alert.alert('Could not share', 'Please try again.');
+      }
+    }
   };
 
   // ── Save trip ──────────────────────────────────────────────────────────────
@@ -366,16 +431,6 @@ export default function ItineraryScreen() {
             <View style={styles.orbHeroBR} />
           </>
         )}
-
-        {/* Back + share */}
-        <View style={styles.topActions}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.actionBtn}>
-            <Text style={styles.actionBtnText}>←</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleShare} style={styles.actionBtn}>
-            <Text style={styles.actionBtnText}>⬆</Text>
-          </TouchableOpacity>
-        </View>
 
         {/* Hero content */}
         <Animated.View style={[styles.heroContent, { opacity: headerContentOpacity, transform: [{ translateY: headerContentTranslateY }] }]}>
@@ -499,14 +554,57 @@ export default function ItineraryScreen() {
                   {days[activeDay].activities.length} activities
                 </Text>
               </View>
-              {/* Weather banner for this day */}
-              {weather[activeDay] && (
-                <WeatherBanner weather={weather[activeDay]} />
+
+              {/* ── Weather card — always shown when data available ── */}
+              {activeDayWeather ? (
+                <WeatherCard weather={activeDayWeather} />
+              ) : weatherError === 'too_far' ? (
+                <View style={styles.weatherNoData}>
+                  <Text style={styles.weatherNoDataText}>📅 Weather forecast available closer to your trip date (within 16 days)</Text>
+                </View>
+              ) : weatherError === 'failed' ? (
+                <View style={styles.weatherNoData}>
+                  <Text style={styles.weatherNoDataText}>🌐 Could not load weather — check your internet connection</Text>
+                </View>
+              ) : null}
+
+              {/* ── Google Maps route button ── */}
+              <TouchableOpacity
+                style={styles.mapsRouteBtn}
+                onPress={() => Linking.openURL(buildMapsRouteUrl(destination, days[activeDay].activities, currentItinerary.tripInput.stayLocation))}
+                activeOpacity={0.82}
+              >
+                <Text style={styles.mapsRouteBtnIcon}>🗺️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.mapsRouteBtnTitle}>View Day {activeDay + 1} Route</Text>
+                  <Text style={styles.mapsRouteBtnSub}>Opens all stops in Google Maps</Text>
+                </View>
+                <Text style={styles.mapsRouteBtnArrow}>→</Text>
+              </TouchableOpacity>
+
+              {/* ── Indoor alternatives toggle — only when bad weather ── */}
+              {activeDayBad && (
+                <View style={styles.indoorToggleCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.indoorToggleTitle}>🏠 Bad weather plan</Text>
+                    <Text style={styles.indoorToggleSub}>
+                      {showIndoorPlan
+                        ? 'Showing indoor alternatives for outdoor activities'
+                        : 'Switch to see indoor alternatives for this day'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={showIndoorPlan}
+                    onValueChange={setShowIndoorPlan}
+                    trackColor={{ false: 'rgba(0,0,0,0.12)', true: Colors.primary }}
+                    thumbColor="#fff"
+                  />
+                </View>
               )}
 
               {days[activeDay].activities.map((activity, i) => (
                 <StaggerItem key={i} index={i} style={styles.activityItem}>
-                  <ActivityCard activity={activity} />
+                  <ActivityCard activity={activity} showIndoor={showIndoorPlan && activeDayBad} />
                 </StaggerItem>
               ))}
             </SlideUp>
@@ -607,9 +705,26 @@ export default function ItineraryScreen() {
         <View style={{ height: 130 }} />
       </AnimatedScrollView>
 
-      {/* Floating PDF export button */}
-      <View style={styles.fab}>
-        <PressScale onPress={handleExportPdf} disabled={exporting} scale={0.97}>
+      {/* Top action bar — floated above everything so overflow:hidden on hero doesn't block touches */}
+      <View style={styles.topActions} pointerEvents="box-none">
+        <TouchableOpacity onPress={() => router.back()} style={styles.actionBtn}>
+          <Text style={styles.actionBtnText}>←</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleShare} style={styles.shareHeroBtn} activeOpacity={0.82}>
+          <Text style={styles.shareHeroBtnIcon}>📤</Text>
+          <Text style={styles.shareHeroBtnText}>Share</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Floating action buttons — Share + Export PDF */}
+      <View style={styles.fabRow}>
+        <PressScale onPress={handleShare} scale={0.97} style={styles.fabShareWrap}>
+          <View style={styles.fabShareButton}>
+            <Text style={styles.fabShareIcon}>📤</Text>
+            <Text style={styles.fabShareLabel}>Share</Text>
+          </View>
+        </PressScale>
+        <PressScale onPress={handleExportPdf} disabled={exporting} scale={0.97} style={{ flex: 1 }}>
           <View style={styles.fabButton}>
             <LinearGradient colors={Gradients.primaryCTA} style={styles.fabGradient}>
               <Text style={styles.fabIcon}>📄</Text>
@@ -622,34 +737,44 @@ export default function ItineraryScreen() {
   );
 }
 
-// ─── Weather Banner ────────────────────────────────────────────────────────────
-const ALERT_META: Record<NonNullable<WeatherAlert>, { bg: string; border: string; textColor: string; message: (w: WeatherDay) => string }> = {
-  storm: { bg: 'rgba(99,102,241,0.10)', border: 'rgba(99,102,241,0.35)', textColor: '#4338CA',
-           message: () => '⛈️ Thunderstorm likely — move all outdoor activities indoors. Check local emergency alerts.' },
-  snow:  { bg: 'rgba(186,230,253,0.25)', border: 'rgba(56,189,248,0.40)', textColor: '#0369A1',
-           message: () => '❄️ Snow expected — dress in layers, check venue closures, use indoor backup plans.' },
-  rain:  { bg: 'rgba(74,144,217,0.09)', border: 'rgba(74,144,217,0.30)', textColor: '#2563EB',
-           message: (w) => `☔ ${w.rainChance}% chance of rain — backup plans shown when you expand each outdoor activity.` },
-  heat:  { bg: 'rgba(253,186,116,0.20)', border: 'rgba(234,88,12,0.35)', textColor: '#C2410C',
-           message: (w) => `🌡️ ${w.tempMax}°C expected — avoid outdoor activity 11AM–3PM. Carry water, seek shade, apply sunscreen.` },
-  cold:  { bg: 'rgba(186,230,253,0.20)', border: 'rgba(56,189,248,0.35)', textColor: '#075985',
-           message: (w) => `🧊 Only ${w.tempMax}°C — bundle up. Some outdoor activities may be uncomfortable; prefer heated indoor venues.` },
+// ─── Weather Card — always shown, prominent ────────────────────────────────────
+const ALERT_META: Record<NonNullable<WeatherAlert>, { bg: string; border: string; textColor: string; label: string; advice: (w: WeatherDay) => string }> = {
+  storm: { bg: 'rgba(99,102,241,0.12)', border: 'rgba(99,102,241,0.40)', textColor: '#4338CA', label: 'Storm Warning',
+           advice: () => 'Move all outdoor activities indoors. Check local emergency alerts.' },
+  snow:  { bg: 'rgba(186,230,253,0.28)', border: 'rgba(56,189,248,0.45)', textColor: '#0369A1', label: 'Snow Expected',
+           advice: () => 'Dress in layers, check venue closures. Use indoor alternatives below.' },
+  rain:  { bg: 'rgba(74,144,217,0.10)', border: 'rgba(74,144,217,0.35)', textColor: '#2563EB', label: 'Rain Likely',
+           advice: (w) => `${w.rainChance}% chance of rain. Toggle "Bad weather plan" above to see indoor alternatives.` },
+  heat:  { bg: 'rgba(253,186,116,0.22)', border: 'rgba(234,88,12,0.40)', textColor: '#C2410C', label: 'Heat Advisory',
+           advice: (w) => `${w.tempMax}°C expected. Avoid outdoor activity 11AM–3PM. Carry water, seek shade.` },
+  cold:  { bg: 'rgba(186,230,253,0.22)', border: 'rgba(56,189,248,0.38)', textColor: '#075985', label: 'Cold Day',
+           advice: (w) => `Only ${w.tempMax}°C. Bundle up — prefer heated indoor venues where possible.` },
 };
 
-function WeatherBanner({ weather }: { weather: WeatherDay }) {
+function WeatherCard({ weather }: { weather: WeatherDay }) {
   const alert = getWeatherAlert(weather);
   const meta  = alert ? ALERT_META[alert] : null;
   return (
-    <View style={[styles.weatherBanner, meta && { backgroundColor: meta.bg, borderColor: meta.border }]}>
-      <Text style={styles.weatherIcon}>{weather.icon}</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.weatherDesc}>{weather.description} · {weather.tempMin}°–{weather.tempMax}°C</Text>
+    <View style={[styles.weatherCard, meta && { backgroundColor: meta.bg, borderColor: meta.border }]}>
+      {/* Top row: big icon + temp range + description */}
+      <View style={styles.weatherCardTop}>
+        <Text style={styles.weatherCardIcon}>{weather.icon}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.weatherCardDesc}>{weather.description}</Text>
+          <Text style={styles.weatherCardTemp}>{weather.tempMin}°–{weather.tempMax}°C · 💧 {weather.rainChance}% rain</Text>
+        </View>
         {meta && (
-          <Text style={[styles.weatherRainWarning, { color: meta.textColor }]}>
-            {meta.message(weather)}
-          </Text>
+          <View style={[styles.weatherAlertBadge, { backgroundColor: meta.textColor + '20', borderColor: meta.textColor + '50' }]}>
+            <Text style={[styles.weatherAlertBadgeText, { color: meta.textColor }]}>{meta.label}</Text>
+          </View>
         )}
       </View>
+      {/* Alert advice row */}
+      {meta && (
+        <Text style={[styles.weatherCardAdvice, { color: meta.textColor }]}>
+          ⚠️  {meta.advice(weather)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -702,29 +827,43 @@ function DiningSpotCard({ spot }: { spot: DiningSpot }) {
 }
 
 // ─── Activity Card ─────────────────────────────────────────────────────────────
-function ActivityCard({ activity }: { activity: Activity }) {
+function ActivityCard({ activity, showIndoor = false }: { activity: Activity; showIndoor?: boolean }) {
   const meta = CATEGORY_META[activity.category] ?? CATEGORY_META.activity;
   const [expanded, setExpanded] = useState(false);
+
+  // Show indoor alternative when: toggle is on AND activity is outdoor AND alternative exists
+  const hasIndoor    = !!(activity.isOutdoor && activity.indoorAlternative);
+  const indoorActive = showIndoor && hasIndoor;
 
   return (
     <TouchableOpacity
       onPress={() => setExpanded(v => !v)}
       activeOpacity={0.92}
-      style={styles.activityCard}
+      style={[styles.activityCard, indoorActive && styles.activityCardIndoor]}
     >
+      {indoorActive && (
+        <View style={styles.indoorActiveBanner}>
+          <Text style={styles.indoorActiveBannerText}>🏠 Indoor plan active</Text>
+        </View>
+      )}
       <View style={styles.activityTime}>
         <Text style={styles.activityTimeText}>{activity.time}</Text>
-        <View style={[styles.timelineDot, { backgroundColor: meta.color }]} />
-        <View style={[styles.timelineLine, { backgroundColor: meta.color }]} />
+        <View style={[styles.timelineDot, { backgroundColor: indoorActive ? '#2563EB' : meta.color }]} />
+        <View style={[styles.timelineLine, { backgroundColor: indoorActive ? '#2563EB' : meta.color }]} />
       </View>
 
-      <View style={[styles.activityBody, { borderLeftColor: meta.color }]}>
+      <View style={[styles.activityBody, { borderLeftColor: indoorActive ? '#2563EB' : meta.color }]}>
         <View style={styles.activityHeader}>
-          <View style={[styles.activityBadge, { backgroundColor: meta.bg }]}>
-            <Text style={styles.activityBadgeIcon}>{meta.icon}</Text>
+          <View style={[styles.activityBadge, { backgroundColor: indoorActive ? 'rgba(37,99,235,0.10)' : meta.bg }]}>
+            <Text style={styles.activityBadgeIcon}>{indoorActive ? '🏠' : meta.icon}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.activityTitle}>{activity.title}</Text>
+            <Text style={[styles.activityTitle, indoorActive && { textDecorationLine: 'line-through', color: Colors.textLight }]}>
+              {activity.title}
+            </Text>
+            {indoorActive && (
+              <Text style={styles.indoorAltTitle}>Indoor: {activity.indoorAlternative}</Text>
+            )}
             <Text style={styles.activityDuration}>{activity.duration}</Text>
           </View>
           {activity.cost && (
@@ -735,7 +874,7 @@ function ActivityCard({ activity }: { activity: Activity }) {
         </View>
 
         <Text style={styles.activityDesc} numberOfLines={expanded ? undefined : 2}>
-          {activity.description}
+          {indoorActive ? activity.indoorAlternative : activity.description}
         </Text>
 
         {expanded && (
@@ -752,7 +891,7 @@ function ActivityCard({ activity }: { activity: Activity }) {
                 <Text style={styles.noteText}>{activity.tips}</Text>
               </View>
             )}
-            {activity.isOutdoor && activity.indoorAlternative && (
+            {!indoorActive && hasIndoor && (
               <View style={styles.backupRow}>
                 <Text style={styles.backupIcon}>🏠</Text>
                 <View style={{ flex: 1 }}>
@@ -798,7 +937,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(123,63,0,0.28)',
   },
   topActions: {
-    flexDirection: 'row', justifyContent: 'space-between',
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.lg,
     paddingTop: Platform.OS === 'ios' ? 56 : 40,
   },
@@ -809,6 +949,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
   },
   actionBtnText: { fontSize: 18, color: '#fff' },
+  shareHeroBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
+  },
+  shareHeroBtnIcon: { fontSize: 16 },
+  shareHeroBtnText: { fontSize: Typography.sm, fontFamily: Typography.bold, color: '#fff' },
   heroContent: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
@@ -939,7 +1088,21 @@ const styles = StyleSheet.create({
   newTripText:  { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.primary },
   newTripArrow: { fontSize: Typography.xl, color: Colors.primary },
 
-  fab:       { position: 'absolute', bottom: Platform.OS === 'ios' ? 40 : 28, left: Spacing.lg, right: Spacing.lg },
+  fabRow: {
+    position: 'absolute', bottom: Platform.OS === 'ios' ? 40 : 28,
+    left: Spacing.lg, right: Spacing.lg,
+    flexDirection: 'row', gap: 10, alignItems: 'center',
+  },
+  fabShareWrap:   { },
+  fabShareButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 18, paddingHorizontal: 20,
+    borderRadius: Radius.full, backgroundColor: Colors.surface,
+    borderWidth: 1.5, borderColor: 'rgba(232,101,26,0.30)',
+    ...Shadow.soft,
+  },
+  fabShareIcon:  { fontSize: 18 },
+  fabShareLabel: { fontSize: Typography.md, fontFamily: Typography.extraBold, color: Colors.primary, letterSpacing: 0.3 },
   fabButton: { borderRadius: Radius.full, overflow: 'hidden', ...Shadow.glow },
   fabGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, gap: 10 },
   fabIcon:  { fontSize: 20 },
@@ -1039,4 +1202,83 @@ const styles = StyleSheet.create({
   backupIcon:  { fontSize: 14, marginTop: 1 },
   backupLabel: { fontSize: Typography.xs, fontFamily: Typography.bold, color: '#2563EB', marginBottom: 2 },
   backupText:  { fontSize: Typography.xs, fontFamily: Typography.regular, color: Colors.textMid, lineHeight: 17 },
+
+  // ── Weather card (new prominent version) ─────────────────────────────────
+  weatherCard: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: Radius.lg, padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1.5, borderColor: 'rgba(232,101,26,0.15)',
+    ...Shadow.soft,
+  },
+  weatherCardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  weatherCardIcon: { fontSize: 36 },
+  weatherCardDesc: { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.textDark },
+  weatherCardTemp: { fontSize: Typography.sm, fontFamily: Typography.semiBold, color: Colors.textMid, marginTop: 2 },
+  weatherAlertBadge: {
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: Radius.full, borderWidth: 1,
+  },
+  weatherAlertBadgeText: { fontSize: Typography.xs, fontFamily: Typography.extraBold },
+  weatherCardAdvice: {
+    fontSize: Typography.sm, fontFamily: Typography.semiBold,
+    lineHeight: 18, marginTop: Spacing.sm,
+    paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)',
+  },
+  weatherNoData: {
+    backgroundColor: 'rgba(255,255,255,0.60)',
+    borderRadius: Radius.md, padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+    borderWidth: 1, borderColor: 'rgba(232,101,26,0.10)',
+  },
+  weatherNoDataText: { fontSize: Typography.sm, fontFamily: Typography.regular, color: Colors.textLight },
+
+  // ── Google Maps route button ──────────────────────────────────────────────
+  mapsRouteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg, padding: Spacing.md,
+    marginBottom: Spacing.sm,
+    borderWidth: 1.5, borderColor: 'rgba(232,101,26,0.20)',
+    ...Shadow.soft,
+  },
+  mapsRouteBtnIcon:  { fontSize: 24 },
+  mapsRouteBtnTitle: { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.textDark },
+  mapsRouteBtnSub:   { fontSize: Typography.xs, fontFamily: Typography.regular, color: Colors.textMid, marginTop: 2 },
+  mapsRouteBtnArrow: { fontSize: Typography.lg, color: Colors.primary, fontFamily: Typography.bold },
+
+  // ── Indoor plan toggle ────────────────────────────────────────────────────
+  indoorToggleCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'rgba(37,99,235,0.07)',
+    borderRadius: Radius.lg, padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1.5, borderColor: 'rgba(37,99,235,0.22)',
+  },
+  indoorToggleTitle: { fontSize: Typography.base, fontFamily: Typography.bold, color: '#1D4ED8' },
+  indoorToggleSub:   { fontSize: Typography.xs, fontFamily: Typography.regular, color: '#2563EB', marginTop: 2, lineHeight: 16 },
+
+  // ── Activity card indoor state ────────────────────────────────────────────
+  activityCardIndoor: { borderColor: 'rgba(37,99,235,0.25)', backgroundColor: 'rgba(37,99,235,0.03)' },
+  indoorActiveBanner: {
+    backgroundColor: 'rgba(37,99,235,0.10)',
+    borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 3,
+    alignSelf: 'flex-start', marginBottom: 6,
+  },
+  indoorActiveBannerText: { fontSize: Typography.xs, fontFamily: Typography.bold, color: '#1D4ED8' },
+  indoorAltTitle: { fontSize: Typography.sm, fontFamily: Typography.bold, color: '#1D4ED8', marginTop: 2, marginBottom: 1 },
+
+  // ── Share card (in scroll body) ───────────────────────────────────────────
+  shareCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg, padding: Spacing.md,
+    marginHorizontal: Spacing.lg, marginBottom: Spacing.sm,
+    borderWidth: 1.5, borderColor: 'rgba(232,101,26,0.20)',
+    ...Shadow.soft,
+  },
+  shareCardIcon:  { fontSize: 28 },
+  shareCardTitle: { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.textDark },
+  shareCardSub:   { fontSize: Typography.xs, fontFamily: Typography.regular, color: Colors.textMid, marginTop: 2 },
+  shareCardArrow: { fontSize: Typography.xl, color: Colors.primary, fontFamily: Typography.bold },
 });

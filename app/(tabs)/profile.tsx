@@ -1,29 +1,75 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, Platform, StatusBar,
-  TouchableOpacity, Alert, ScrollView,
+  TouchableOpacity, Alert, ScrollView, Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import auth from '@react-native-firebase/auth';
 import { Colors, Gradients, Typography, Spacing, Radius, Shadow } from '../../constants/theme';
 import { GlassCard } from '../../components/ui';
 import { SlideUp } from '../../components/ui/Animations';
 import { useAuthStore, useTripStore } from '../../store';
 import { signOutUser } from '../../lib/auth';
 
-const MENU_ITEMS = [
-  { icon: '🔔', label: 'Notifications',     onPress: () => {} },
-  { icon: '🌙', label: 'Appearance',         onPress: () => {} },
-  { icon: '🔒', label: 'Privacy',            onPress: () => {} },
-  { icon: '💬', label: 'Send feedback',      onPress: () => {} },
-  { icon: '⭐', label: 'Rate FamilyQuest',   onPress: () => {} },
-  { icon: '📋', label: 'Terms & Privacy',    onPress: () => {} },
-];
-
 export default function ProfileScreen() {
   const { user, setUser } = useAuthStore();
   const { savedTrips }    = useTripStore();
-  const [signingOut, setSigningOut] = useState(false);
+  const [signingOut, setSigningOut]     = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+
+  const handleDeactivate = () => {
+    Alert.alert(
+      'Deactivate account?',
+      'This permanently deletes your account and all saved trips. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete my account',
+          style: 'destructive',
+          onPress: async () => {
+            setDeactivating(true);
+            try {
+              await auth().currentUser?.delete();
+              setUser(null);
+              router.replace('/auth/welcome');
+            } catch (err: any) {
+              // Firebase requires recent sign-in for deletion
+              if (err?.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Sign in again to confirm',
+                  'For security, please sign out and sign back in before deleting your account.',
+                );
+              } else {
+                Alert.alert('Error', 'Could not delete account. Please try again.');
+              }
+            } finally {
+              setDeactivating(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const MENU_ITEMS = [
+    {
+      icon: '🔔', label: 'Notifications',
+      onPress: () => Linking.openSettings(),
+    },
+    {
+      icon: '💬', label: 'Send feedback',
+      onPress: () => Linking.openURL('mailto:support@familyquest.app?subject=FamilyQuest%20Feedback'),
+    },
+    {
+      icon: '⭐', label: 'Rate FamilyQuest',
+      onPress: () => Linking.openURL('https://play.google.com/store/apps/details?id=com.familyquest.app'),
+    },
+    {
+      icon: '📋', label: 'Terms & Privacy',
+      onPress: () => Linking.openURL('https://familyquest.app/privacy'),
+    },
+  ];
 
   const handleSignOut = () => {
     Alert.alert(
@@ -117,15 +163,26 @@ export default function ProfileScreen() {
             </View>
 
             {isLoggedIn ? (
-              <TouchableOpacity
-                onPress={handleSignOut}
-                style={styles.signOutBtn}
-                disabled={signingOut}
-              >
-                <Text style={styles.signOutText}>
-                  {signingOut ? 'Signing out…' : 'Sign Out'}
-                </Text>
-              </TouchableOpacity>
+              <View style={{ width: '100%', gap: 10 }}>
+                <TouchableOpacity
+                  onPress={handleSignOut}
+                  style={styles.signOutBtn}
+                  disabled={signingOut}
+                >
+                  <Text style={styles.signOutText}>
+                    {signingOut ? 'Signing out…' : 'Sign Out'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleDeactivate}
+                  style={styles.deactivateBtn}
+                  disabled={deactivating}
+                >
+                  <Text style={styles.deactivateText}>
+                    {deactivating ? 'Deleting…' : 'Deactivate Account'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               <TouchableOpacity
                 onPress={() => router.push('/auth/login')}
@@ -212,6 +269,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(231,76,60,0.06)',
   },
   signOutText: { color: Colors.danger, fontFamily: Typography.semiBold, fontSize: Typography.base },
+  deactivateBtn: {
+    paddingVertical: 10, paddingHorizontal: Spacing.xl,
+    borderRadius: Radius.full, alignSelf: 'center',
+  },
+  deactivateText: { color: Colors.textLight, fontFamily: Typography.regular, fontSize: Typography.sm, textDecorationLine: 'underline' },
 
   menuCard:   { padding: 4, backgroundColor: Colors.surface },
   menuRow:    { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: Spacing.md, gap: 14 },

@@ -93,6 +93,40 @@ const CUISINE_OPTIONS: { id: CuisinePreference; label: string; icon: string }[] 
 // ─── Daily limit (mirrors server) ─────────────────────────────────────────────
 const DAILY_LIMIT_GUEST = 5;
 
+// ─── Contextual emoji based on destination + vibes ────────────────────────────
+function getContextualEmoji(destination: string, vibes: Vibe[]): string {
+  const d = destination.toLowerCase();
+  // Destination keyword overrides vibe
+  if (d.includes('bali') || d.includes('maldives') || d.includes('phuket') || d.includes('goa') || d.includes('cancun') || d.includes('bora bora')) return '🏖️';
+  if (d.includes('japan') || d.includes('tokyo') || d.includes('kyoto') || d.includes('osaka')) return '⛩️';
+  if (d.includes('paris') || d.includes('france') && d.includes('nice')) return '🗼';
+  if (d.includes('new york') || d.includes('nyc') || d.includes('manhattan')) return '🗽';
+  if (d.includes('dubai') || d.includes('abu dhabi')) return '🌆';
+  if (d.includes('kenya') || d.includes('safari') || d.includes('serengeti') || d.includes('africa')) return '🦁';
+  if (d.includes('iceland') || d.includes('reykjavik')) return '🌋';
+  if (d.includes('rome') || d.includes('athens') || d.includes('istanbul')) return '🏛️';
+  if (d.includes('new zealand') || d.includes('queenstown') || d.includes('swiss') || d.includes('alps')) return '🏔️';
+  if (d.includes('sydney') || d.includes('australia')) return '🦘';
+  if (d.includes('egypt') || d.includes('cairo')) return '🏺';
+  if (d.includes('india') || d.includes('rajasthan') || d.includes('mumbai') || d.includes('delhi')) return '🕌';
+  if (d.includes('rio') || d.includes('brazil')) return '🌴';
+  if (d.includes('london') || d.includes('edinburgh') || d.includes('dublin')) return '🏰';
+  if (d.includes('amsterdam') || d.includes('copenhagen') || d.includes('stockholm')) return '🚲';
+  if (d.includes('singapore') || d.includes('hong kong') || d.includes('shanghai')) return '🌃';
+  // Vibe-based fallback
+  if (vibes.includes('Beach')) return '🏖️';
+  if (vibes.includes('Hiking') || vibes.includes('Nature')) return '🏔️';
+  if (vibes.includes('Foodie')) return '🍽️';
+  if (vibes.includes('Museums') || vibes.includes('History')) return '🏛️';
+  if (vibes.includes('Adventure')) return '🎢';
+  if (vibes.includes('Shopping')) return '🛍️';
+  if (vibes.includes('Relaxation')) return '🧘';
+  if (vibes.includes('Nightlife')) return '🌃';
+  if (vibes.includes('Photography')) return '📸';
+  if (vibes.includes('Kid-Friendly')) return '👨‍👩‍👧';
+  return '🌍';
+}
+
 // ─── Date helpers (Intl-free — Hermes release builds lack ICU data) ───────────
 const MONTH_NAMES   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const WEEKDAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -125,7 +159,6 @@ export default function PlannerScreen() {
   const [kidAges,         setKidAges]         = useState<number[]>([]);
   const [selectedVibes,   setSelectedVibes]   = useState<Vibe[]>(['Kid-Friendly', 'Foodie']);
   const [selectedAccess,  setSelectedAccess]  = useState<AccessibilityNeed[]>([]);
-  const [includeDining,   setIncludeDining]   = useState(true);
   const [pace,            setPace]            = useState<TripPace>('balanced');
   const [budget,          setBudget]          = useState<BudgetLevel>('mid-range');
   const [stayLocation,    setStayLocation]    = useState('');
@@ -210,12 +243,12 @@ export default function PlannerScreen() {
         kidAges,
         accessibility: selectedAccess,
         vibes:         selectedVibes,
-        includeDining,
+        includeDining: true,
         pace,
         budget,
         stayLocation: stayLocation.trim() || undefined,
-        dietaryNeeds: includeDining ? dietaryNeeds : [],
-        cuisinePrefs: includeDining ? cuisinePrefs : [],
+        dietaryNeeds,
+        cuisinePrefs,
       };
 
       const itinerary = await generateItinerary(tripInput);
@@ -245,7 +278,7 @@ export default function PlannerScreen() {
         <SlideUp delay={0}>
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.headerTitle}>Plan a Trip ✈️</Text>
+              <Text style={styles.headerTitle}>Plan a Trip {getContextualEmoji(destination, selectedVibes)}</Text>
               <Text style={styles.headerSub}>Tell us about your adventure</Text>
             </View>
             {isGuest && (
@@ -330,7 +363,7 @@ export default function PlannerScreen() {
           <View style={styles.dateStack}>
             <PressScale onPress={() => setShowStartPicker(true)}>
               <View style={[styles.inputWrap, styles.dateBox]}>
-                <Text style={styles.inputIcon}>🛫</Text>
+                <Text style={styles.inputIcon}>🗓️</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dateLabel}>Departing</Text>
                   <Text style={[styles.dateValue, !startDate && styles.datePlaceholder]}>
@@ -342,7 +375,7 @@ export default function PlannerScreen() {
             </PressScale>
             <PressScale onPress={() => setShowEndPicker(true)} style={{ marginTop: 10 }}>
               <View style={[styles.inputWrap, styles.dateBox]}>
-                <Text style={styles.inputIcon}>🛬</Text>
+                <Text style={styles.inputIcon}>🗓️</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dateLabel}>Returning</Text>
                   <Text style={[styles.dateValue, !endDate && styles.datePlaceholder]}>
@@ -526,60 +559,38 @@ export default function PlannerScreen() {
           </View>
         </SlideUp>
 
-        {/* Dining */}
+        {/* Dining & cuisine (always included — dietary/cuisine prefs feed the AI) */}
         <SlideUp delay={500}>
-          <GlassCard style={styles.diningCard}>
-            <View style={styles.diningRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.diningTitle}>Include dining recommendations</Text>
-                <Text style={styles.diningSubtitle}>We'll suggest nearby restaurants timed to each activity.</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setIncludeDining(v => !v)}
-                style={[styles.toggle, includeDining && styles.toggleOn]}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.toggleThumb, includeDining && styles.toggleThumbOn]} />
-              </TouchableOpacity>
+          <GlassCard style={styles.groupCard}>
+            <SectionHeader title="🥗 Dietary needs" subtitle="We'll filter dining options to match" />
+            <View style={styles.chipWrap}>
+              {DIETARY_OPTIONS.map(d => (
+                <TouchableOpacity
+                  key={d.id}
+                  onPress={() => toggleDietary(d.id)}
+                  style={[styles.filterChip, dietaryNeeds.includes(d.id) && styles.filterChipActive]}
+                >
+                  <Text style={styles.filterChipIcon}>{d.icon}</Text>
+                  <Text style={[styles.filterChipText, dietaryNeeds.includes(d.id) && styles.filterChipTextActive]}>{d.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
+            <SectionHeader title="🌍 Cuisine preferences" subtitle="Pick all that appeal — 2-3 restaurant options per meal" style={{ marginTop: Spacing.lg }} />
+            <View style={styles.chipWrap}>
+              {CUISINE_OPTIONS.map(c => (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => toggleCuisine(c.id)}
+                  style={[styles.filterChip, cuisinePrefs.includes(c.id) && styles.filterChipActive]}
+                >
+                  <Text style={styles.filterChipIcon}>{c.icon}</Text>
+                  <Text style={[styles.filterChipText, cuisinePrefs.includes(c.id) && styles.filterChipTextActive]}>{c.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </GlassCard>
         </SlideUp>
-
-        {/* Dietary needs + Cuisine prefs (shown when dining enabled) */}
-        {includeDining && (
-          <SlideUp delay={520}>
-            <GlassCard style={styles.groupCard}>
-              <SectionHeader title="🥗 Dietary needs" subtitle="We'll filter options to match" />
-              <View style={styles.chipWrap}>
-                {DIETARY_OPTIONS.map(d => (
-                  <TouchableOpacity
-                    key={d.id}
-                    onPress={() => toggleDietary(d.id)}
-                    style={[styles.filterChip, dietaryNeeds.includes(d.id) && styles.filterChipActive]}
-                  >
-                    <Text style={styles.filterChipIcon}>{d.icon}</Text>
-                    <Text style={[styles.filterChipText, dietaryNeeds.includes(d.id) && styles.filterChipTextActive]}>{d.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <SectionHeader title="🌍 Cuisine preferences" subtitle="Pick all that appeal — 2-3 options per meal" style={{ marginTop: Spacing.lg }} />
-              <View style={styles.chipWrap}>
-                {CUISINE_OPTIONS.map(c => (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => toggleCuisine(c.id)}
-                    style={[styles.filterChip, cuisinePrefs.includes(c.id) && styles.filterChipActive]}
-                  >
-                    <Text style={styles.filterChipIcon}>{c.icon}</Text>
-                    <Text style={[styles.filterChipText, cuisinePrefs.includes(c.id) && styles.filterChipTextActive]}>{c.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </GlassCard>
-          </SlideUp>
-        )}
 
         {/* CTA */}
         <SlideUp delay={560}>
@@ -613,7 +624,7 @@ export default function PlannerScreen() {
       {showSummary && startDate && endDate && (
         <View style={styles.summaryOverlay}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Ready to build? ✈️</Text>
+            <Text style={styles.summaryTitle}>Ready to build? {getContextualEmoji(destination, selectedVibes)}</Text>
             <Text style={styles.summaryDestination}>{destination}</Text>
 
             {/* Scrollable so all rows visible on small screens */}
@@ -636,10 +647,10 @@ export default function PlannerScreen() {
               {selectedAccess.length > 0 && (
                 <SummaryRow icon="♿" label={selectedAccess.map(a => ACCESS_OPTIONS.find(o => o.id === a)?.label).join(', ')} />
               )}
-              {includeDining && dietaryNeeds.length > 0 && (
+              {dietaryNeeds.length > 0 && (
                 <SummaryRow icon="🥗" label={dietaryNeeds.join(', ')} sub="Dietary" />
               )}
-              {includeDining && cuisinePrefs.length > 0 && (
+              {cuisinePrefs.length > 0 && (
                 <SummaryRow icon="🍴" label={cuisinePrefs.join(' · ')} sub="Cuisine" />
               )}
             </ScrollView>
@@ -670,7 +681,7 @@ export default function PlannerScreen() {
         destination={destination}
         kids={kids}
         accessibility={selectedAccess}
-        includeDining={includeDining}
+        includeDining={true}
       />
     </View>
   );
