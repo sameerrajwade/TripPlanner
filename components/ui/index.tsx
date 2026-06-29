@@ -101,12 +101,13 @@ interface SectionHeaderProps {
   title: string;
   subtitle?: string;
   light?: boolean;
+  compact?: boolean;
   style?: ViewStyle;
 }
-export function SectionHeader({ title, subtitle, light, style }: SectionHeaderProps) {
+export function SectionHeader({ title, subtitle, light, compact, style }: SectionHeaderProps) {
   return (
     <View style={[styles.sectionHeader, style]}>
-      <Text style={[styles.sectionTitle, light && { color: Colors.textOnDark }]}>{title}</Text>
+      <Text style={[styles.sectionTitle, compact && { fontSize: Typography.base }, light && { color: Colors.textOnDark }]}>{title}</Text>
       {subtitle && (
         <Text style={[styles.sectionSubtitle, light && { color: 'rgba(255,255,255,0.55)' }]}>
           {subtitle}

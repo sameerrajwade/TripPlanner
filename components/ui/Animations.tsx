@@ -82,7 +82,7 @@ export function ShimmerBox({ width, height, borderRadius = 12, style }: ShimmerP
 
   return (
     <Animated.View
-      style={[{ width, height, borderRadius, backgroundColor: '#D8E8D8', opacity }, style]}
+      style={[{ width, height, borderRadius, backgroundColor: '#EEEEF4', opacity }, style]}
     />
   );
 }

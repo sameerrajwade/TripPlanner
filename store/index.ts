@@ -10,6 +10,7 @@ import {
 const SAVED_TRIPS_KEY   = '@familyquest/saved_trips';
 const DAILY_COUNT_KEY   = '@familyquest/daily_count';
 const DAILY_COUNT_DATE  = '@familyquest/daily_count_date';
+const SUBSCRIPTION_KEY  = '@roamly/subscription';
 
 // ─── Date reviver for JSON.parse (restores Date objects from ISO strings) ─────
 function reviveItinerary(raw: any): Itinerary {
@@ -53,6 +54,7 @@ interface TripState {
   bumpDailyCount:     () => void;
   loadDailyCount:     () => Promise<void>;
   saveTrip:           (itinerary: Itinerary, uid?: string | null) => Promise<void>;
+  updateTrip:         (id: string, updates: Partial<Itinerary>) => Promise<void>;
   deleteTrip:         (id: string, uid?: string | null) => Promise<void>;
   loadSavedTrips:     () => Promise<void>;
   syncFromCloud:      (uid: string) => Promise<void>;
@@ -112,6 +114,15 @@ export const useTripStore = create<TripState>((set, get) => ({
     if (uid) syncTripToCloud(uid, itinerary); // fire-and-forget, fails silently offline
   },
 
+  // ── Update a saved trip locally (e.g. custom name) ──────────────────────
+  updateTrip: async (id, updates) => {
+    const updated = get().savedTrips.map(t => t.id === id ? { ...t, ...updates } : t);
+    set({ savedTrips: updated });
+    try {
+      await AsyncStorage.setItem(SAVED_TRIPS_KEY, JSON.stringify(updated));
+    } catch (_) {}
+  },
+
   // ── Delete a saved trip — local-first, mirrors deletion to cloud ─────────
   deleteTrip: async (id, uid) => {
     const updated = get().savedTrips.filter(t => t.id !== id);
@@ -145,4 +156,42 @@ export const useTripStore = create<TripState>((set, get) => ({
   },
 
   resetInput: () => set({ currentInput: {} }),
+}));
+
+// ─── Subscription Store ──────────────────────────────────────────────────────
+interface SubscriptionState {
+  isPremium: boolean;
+  plan: 'free' | 'monthly' | 'yearly';
+  setPremium: (plan: 'monthly' | 'yearly') => void;
+  clearPremium: () => void;
+  loadSubscription: () => Promise<void>;
+}
+
+export const useSubscriptionStore = create<SubscriptionState>((set) => ({
+  isPremium: false,
+  plan: 'free',
+
+  setPremium: async (plan) => {
+    set({ isPremium: true, plan });
+    try {
+      await AsyncStorage.setItem(SUBSCRIPTION_KEY, JSON.stringify({ isPremium: true, plan }));
+    } catch (_) {}
+  },
+
+  clearPremium: async () => {
+    set({ isPremium: false, plan: 'free' });
+    try {
+      await AsyncStorage.removeItem(SUBSCRIPTION_KEY);
+    } catch (_) {}
+  },
+
+  loadSubscription: async () => {
+    try {
+      const raw = await AsyncStorage.getItem(SUBSCRIPTION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        set({ isPremium: parsed.isPremium ?? false, plan: parsed.plan ?? 'free' });
+      }
+    } catch (_) {}
+  },
 }));

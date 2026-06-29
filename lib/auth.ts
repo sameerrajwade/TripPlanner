@@ -94,9 +94,7 @@ export function getAuthErrorMessage(err: any): string {
     case 'auth/operation-not-allowed':
       return 'This sign-in method is not enabled. Contact support.';
     default:
-      if (err?.message?.includes('Firebase')) {
-        return 'Firebase is not configured yet. Add google-services.json to enable auth.';
-      }
-      return 'Authentication failed. Please try again.';
+      console.warn('[auth] error:', code, err?.message);
+      return err?.message ?? 'Authentication failed. Please try again.';
   }
 }

@@ -16,17 +16,17 @@ function buildMessages(opts: {
   const dest = destination.trim() || 'your destination';
 
   const messages = [
-    `Researching the best of ${dest}…`,
+    `Handpicking the best spots in ${dest} for you…`,
     `Mapping neighborhoods so you never backtrack…`,
   ];
 
-  if (kids > 0) messages.push(`Pacing each day for little explorers…`);
-  if (accessibility.length > 0) messages.push(`Checking accessibility at every stop…`);
-  if (includeDining) messages.push(`Finding family-friendly tables nearby…`);
+  if (kids > 0) messages.push(`Making sure every stop is fun for little ones…`);
+  if (accessibility.length > 0) messages.push(`Double-checking accessibility at every stop…`);
+  if (includeDining) messages.push(`Scouting the tastiest tables nearby…`);
 
   messages.push(
-    `Curating insider tips locals love…`,
-    `Putting together your perfect itinerary…`,
+    `Uncovering hidden gems locals swear by…`,
+    `Polishing your perfect itinerary…`,
   );
 
   return messages;
@@ -105,7 +105,7 @@ export function GeneratingOverlay({ visible, destination, kids, accessibility, i
             ))}
           </View>
 
-          <Text style={styles.hint}>This usually takes 20–40 seconds ✨</Text>
+          <Text style={styles.hint}>Worth the wait — we're being thorough ✨</Text>
         </View>
       </View>
     </Animated.View>

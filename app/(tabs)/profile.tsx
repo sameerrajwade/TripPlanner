@@ -9,14 +9,17 @@ import auth from '@react-native-firebase/auth';
 import { Colors, Gradients, Typography, Spacing, Radius, Shadow } from '../../constants/theme';
 import { GlassCard } from '../../components/ui';
 import { SlideUp } from '../../components/ui/Animations';
-import { useAuthStore, useTripStore } from '../../store';
+import { useAuthStore, useTripStore, useSubscriptionStore } from '../../store';
 import { signOutUser } from '../../lib/auth';
+import UpgradeModal from '../../components/ui/UpgradeModal';
 
 export default function ProfileScreen() {
   const { user, setUser } = useAuthStore();
   const { savedTrips }    = useTripStore();
+  const { isPremium, plan } = useSubscriptionStore();
   const [signingOut, setSigningOut]     = useState(false);
   const [deactivating, setDeactivating] = useState(false);
+  const [showUpgrade, setShowUpgrade]   = useState(false);
 
   const handleDeactivate = () => {
     Alert.alert(
@@ -59,15 +62,15 @@ export default function ProfileScreen() {
     },
     {
       icon: '💬', label: 'Send feedback',
-      onPress: () => Linking.openURL('mailto:support@familyquest.app?subject=FamilyQuest%20Feedback'),
+      onPress: () => Linking.openURL('mailto:support@roamly.app?subject=Roamly%20Feedback'),
     },
     {
-      icon: '⭐', label: 'Rate FamilyQuest',
+      icon: '⭐', label: 'Rate Roamly',
       onPress: () => Linking.openURL('https://play.google.com/store/apps/details?id=com.familyquest.app'),
     },
     {
       icon: '📋', label: 'Terms & Privacy',
-      onPress: () => Linking.openURL('https://familyquest.app/privacy'),
+      onPress: () => Linking.openURL('https://roamly.app/privacy'),
     },
   ];
 
@@ -139,6 +142,25 @@ export default function ProfileScreen() {
             <Text style={styles.userEmail}>
               {user?.email ?? 'Not signed in'}
             </Text>
+
+            {/* Subscription badge */}
+            {isLoggedIn && (
+              isPremium ? (
+                <View style={styles.proBadge}>
+                  <Text style={styles.proBadgeText}>
+                    Roamly Pro · {plan === 'yearly' ? 'Annual' : 'Monthly'}
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.upgradeBtn}
+                  onPress={() => setShowUpgrade(true)}
+                  activeOpacity={0.82}
+                >
+                  <Text style={styles.upgradeBtnText}>Upgrade to Pro</Text>
+                </TouchableOpacity>
+              )
+            )}
 
             {/* Stats row */}
             <View style={styles.statsRow}>
@@ -218,9 +240,11 @@ export default function ProfileScreen() {
         </SlideUp>
 
         <SlideUp delay={300}>
-          <Text style={styles.version}>FamilyQuest v1.0.0</Text>
+          <Text style={styles.version}>Roamly v1.0.0</Text>
         </SlideUp>
       </ScrollView>
+
+      <UpgradeModal visible={showUpgrade} onClose={() => setShowUpgrade(false)} />
     </View>
   );
 }
@@ -245,7 +269,27 @@ const styles = StyleSheet.create({
   avatarEmoji:    { fontSize: 36 },
   avatarInitials: { fontSize: 28, fontFamily: Typography.black, color: '#fff' },
   userName:  { fontSize: Typography.xl, fontFamily: Typography.extraBold, color: Colors.textDark },
-  userEmail: { fontSize: Typography.sm, fontFamily: Typography.regular, color: Colors.textLight, marginTop: 4, marginBottom: Spacing.lg },
+  userEmail: { fontSize: Typography.sm, fontFamily: Typography.regular, color: Colors.textLight, marginTop: 4, marginBottom: Spacing.sm },
+
+  proBadge: {
+    backgroundColor: 'rgba(240,90,40,0.12)',
+    paddingHorizontal: 14, paddingVertical: 5,
+    borderRadius: Radius.full, marginBottom: Spacing.md,
+    borderWidth: 1, borderColor: 'rgba(240,90,40,0.30)',
+  },
+  proBadgeText: {
+    fontSize: Typography.xs, fontFamily: Typography.bold,
+    color: Colors.primary, letterSpacing: 0.5,
+  },
+  upgradeBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20, paddingVertical: 8,
+    borderRadius: Radius.full, marginBottom: Spacing.md,
+    ...Shadow.glow,
+  },
+  upgradeBtnText: {
+    fontSize: Typography.sm, fontFamily: Typography.bold, color: '#fff',
+  },
 
   statsRow: {
     flexDirection: 'row', alignItems: 'center',

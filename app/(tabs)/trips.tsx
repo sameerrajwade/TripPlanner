@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, Platform, StatusBar,
+  View, Text, StyleSheet, Platform, StatusBar, Modal,
   ScrollView, TouchableOpacity, Alert, TextInput, Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,8 @@ import { SlideUp, StaggerItem } from '../../components/ui/Animations';
 import { Button } from '../../components/ui';
 import { useTripStore, useAuthStore } from '../../store';
 import { Itinerary } from '../../types';
+import * as Haptics from 'expo-haptics';
+import Svg, { Rect, Circle, Path, Line } from 'react-native-svg';
 
 // ─── Vibe → emoji map ─────────────────────────────────────────────────────────
 const VIBE_EMOJI: Record<string, string> = {
@@ -36,13 +38,14 @@ function formatShortDate(d: Date): string {
 
 // ─── Individual Trip Card ─────────────────────────────────────────────────────
 function TripCard({
-  trip, index, onView, onDelete, onShare,
+  trip, index, onView, onDelete, onShare, onRename,
 }: {
   trip: Itinerary;
   index: number;
   onView: () => void;
   onDelete: () => void;
   onShare: () => void;
+  onRename: () => void;
 }) {
   const palette = CARD_PALETTES[index % CARD_PALETTES.length];
   const { destination, days, tripInput, generatedAt } = trip;
@@ -65,7 +68,9 @@ function TripCard({
 
         <View style={styles.cardHeaderContent}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.cardDest}>{destination}</Text>
+            <TouchableOpacity onPress={onRename} activeOpacity={0.7}>
+              <Text style={styles.cardDest}>{(trip as any).customName || destination}</Text>
+            </TouchableOpacity>
             <Text style={styles.cardDates}>{dateRange}</Text>
           </View>
           <View style={styles.cardDayBadge}>
@@ -112,8 +117,8 @@ function TripCard({
             Saved {formatDate(generatedAt)}
           </Text>
           <View style={styles.cardBtns}>
-            <TouchableOpacity onPress={onShare} style={styles.deleteBtn}>
-              <Text style={styles.deleteBtnText}>⬆</Text>
+            <TouchableOpacity onPress={onShare} style={styles.shareBtn}>
+              <Text style={styles.shareBtnText}>⬆</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onDelete} style={styles.deleteBtn}>
               <Text style={styles.deleteBtnText}>🗑</Text>
@@ -130,7 +135,7 @@ function TripCard({
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function TripsScreen() {
-  const { savedTrips, deleteTrip, setItinerary } = useTripStore();
+  const { savedTrips, deleteTrip, setItinerary, updateTrip } = useTripStore();
   const { user } = useAuthStore();
   const [query, setQuery] = React.useState('');
 
@@ -139,6 +144,7 @@ export default function TripsScreen() {
     if (!q) return savedTrips;
     return savedTrips.filter(t =>
       t.destination.toLowerCase().includes(q) ||
+      ((t as any).customName || '').toLowerCase().includes(q) ||
       t.tripInput.vibes.some(v => v.toLowerCase().includes(q))
     );
   }, [savedTrips, query]);
@@ -146,7 +152,7 @@ export default function TripsScreen() {
   const handleShare = async (trip: Itinerary) => {
     try {
       await Share.share({
-        message: `Check out my FamilyQuest trip to ${trip.destination}! 🌍\n${trip.days.length} days · ${trip.tripInput.vibes.join(', ')}\n\nPlanned with FamilyQuest 🌍`,
+        message: `Check out my Roamly trip to ${trip.destination}! 🌍\n${trip.days.length} days · ${trip.tripInput.vibes.join(', ')}\n\nPlanned with Roamly\n\nDownload: https://play.google.com/store/apps/details?id=com.familyquest.app`,
         title: `${trip.destination} Trip`,
       });
     } catch (_) {}
@@ -157,7 +163,43 @@ export default function TripsScreen() {
     router.push('/itinerary');
   };
 
+  const [renameTrip, setRenameTrip] = React.useState<Itinerary | null>(null);
+  const [renameText, setRenameText] = React.useState('');
+
+  const handleRename = (trip: Itinerary) => {
+    if (Platform.OS === 'ios') {
+      Alert.prompt(
+        'Rename trip',
+        `Give "${trip.destination}" a custom name`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Save',
+            onPress: (name?: string) => {
+              if (name && name.trim()) {
+                updateTrip(trip.id, { customName: name.trim() } as any);
+              }
+            },
+          },
+        ],
+        'plain-text',
+        (trip as any).customName || trip.destination,
+      );
+    } else {
+      setRenameText((trip as any).customName || trip.destination);
+      setRenameTrip(trip);
+    }
+  };
+
+  const confirmRename = () => {
+    if (renameTrip && renameText.trim()) {
+      updateTrip(renameTrip.id, { customName: renameText.trim() } as any);
+    }
+    setRenameTrip(null);
+  };
+
   const handleDelete = (trip: Itinerary) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert(
       'Remove trip',
       `Remove ${trip.destination} from saved trips?`,
@@ -208,7 +250,24 @@ export default function TripsScreen() {
       {savedTrips.length === 0 ? (
         /* Empty state */
         <View style={styles.empty}>
-          <Text style={styles.emptyEmoji}>🗺️</Text>
+          <Svg width={120} height={120} viewBox="0 0 120 120">
+            {/* Suitcase body */}
+            <Rect x="20" y="45" width="80" height="55" rx="8" fill="#F05A28" opacity={0.15} stroke="#F05A28" strokeWidth="2.5" />
+            {/* Suitcase handle */}
+            <Path d="M45 45 V32 Q45 25 52 25 H68 Q75 25 75 32 V45" fill="none" stroke="#F05A28" strokeWidth="2.5" strokeLinecap="round" />
+            {/* Suitcase band */}
+            <Line x1="20" y1="70" x2="100" y2="70" stroke="#F05A28" strokeWidth="2" />
+            {/* Suitcase clasp */}
+            <Rect x="55" y="64" width="10" height="12" rx="2" fill="#F05A28" />
+            {/* Map pin */}
+            <Path d="M90 20 C90 10 105 10 105 20 C105 30 97.5 38 97.5 38 C97.5 38 90 30 90 20 Z" fill="#5B8DEF" />
+            <Circle cx="97.5" cy="20" r="4" fill="white" />
+            {/* Dotted path from pin */}
+            <Path d="M90 35 Q75 40 70 50" stroke="#5B8DEF" strokeWidth="1.5" strokeDasharray="3 3" fill="none" />
+            {/* Wheels */}
+            <Circle cx="38" cy="102" r="4" fill="#F05A28" opacity={0.6} />
+            <Circle cx="82" cy="102" r="4" fill="#F05A28" opacity={0.6} />
+          </Svg>
           <Text style={styles.emptyTitle}>No trips yet</Text>
           <Text style={styles.emptyText}>
             Generate your first family itinerary and save it — it'll appear here forever, even offline.
@@ -243,6 +302,7 @@ export default function TripsScreen() {
                 onView={() => handleView(trip)}
                 onDelete={() => handleDelete(trip)}
                 onShare={() => handleShare(trip)}
+                onRename={() => handleRename(trip)}
               />
             </StaggerItem>
           ))}
@@ -259,6 +319,32 @@ export default function TripsScreen() {
 
           <View style={{ height: 40 }} />
         </ScrollView>
+      )}
+
+      {/* Android rename modal */}
+      {renameTrip && (
+        <Modal transparent animationType="fade" onRequestClose={() => setRenameTrip(null)}>
+          <View style={styles.renameOverlay}>
+            <View style={styles.renameModal}>
+              <Text style={styles.renameTitle}>Rename trip</Text>
+              <TextInput
+                value={renameText}
+                onChangeText={setRenameText}
+                style={styles.renameInput}
+                autoFocus
+                selectTextOnFocus
+              />
+              <View style={styles.renameBtns}>
+                <TouchableOpacity onPress={() => setRenameTrip(null)} style={styles.renameCancelBtn}>
+                  <Text style={styles.renameCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmRename} style={styles.renameSaveBtn}>
+                  <Text style={styles.renameSaveText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
     </View>
   );
@@ -345,6 +431,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(231,76,60,0.20)',
   },
   deleteBtnText: { fontSize: 16 },
+  shareBtn: {
+    width: 36, height: 36, borderRadius: Radius.full,
+    backgroundColor: 'rgba(240,90,40,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(240,90,40,0.20)',
+  },
+  shareBtnText: { fontSize: 16 },
   viewBtn: {
     paddingVertical: 8, paddingHorizontal: 16,
     borderRadius: Radius.full,
@@ -362,4 +455,32 @@ const styles = StyleSheet.create({
   },
   planMoreText:  { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.primary },
   planMoreArrow: { fontSize: Typography.xl, color: Colors.primary },
+
+  // ── Rename modal (Android) ───────────────────────────────────────────
+  renameOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center', padding: Spacing.xl,
+  },
+  renameModal: {
+    width: '100%', backgroundColor: Colors.surface,
+    borderRadius: Radius.xl, padding: Spacing.lg,
+  },
+  renameTitle: {
+    fontSize: Typography.lg, fontFamily: Typography.extraBold,
+    color: Colors.textDark, marginBottom: Spacing.md,
+  },
+  renameInput: {
+    fontSize: Typography.base, fontFamily: Typography.regular,
+    color: Colors.textDark, borderWidth: 1.5,
+    borderColor: 'rgba(232,101,26,0.25)', borderRadius: Radius.md,
+    padding: Spacing.sm, marginBottom: Spacing.md,
+  },
+  renameBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  renameCancelBtn: { paddingVertical: 8, paddingHorizontal: 16 },
+  renameCancelText: { fontSize: Typography.sm, fontFamily: Typography.semiBold, color: Colors.textMid },
+  renameSaveBtn: {
+    paddingVertical: 8, paddingHorizontal: 16,
+    backgroundColor: Colors.primary, borderRadius: Radius.full,
+  },
+  renameSaveText: { fontSize: Typography.sm, fontFamily: Typography.bold, color: '#fff' },
 });

@@ -5,11 +5,9 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Colors, Gradients, Typography, Spacing, Radius, Shadow } from '../../constants/theme';
-import { SlideUp } from '../../components/ui/Animations';
-import { Button } from '../../components/ui';
+import { Typography, Spacing, Radius, Shadow } from '../../constants/theme';
 
-const { height: H } = Dimensions.get('window');
+const { height: H, width: W } = Dimensions.get('window');
 
 export default function WelcomeScreen() {
   const logoScale   = useRef(new Animated.Value(0.7)).current;
@@ -30,7 +28,7 @@ export default function WelcomeScreen() {
 
     Animated.loop(
       Animated.sequence([
-        Animated.timing(floatY, { toValue: -12, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(floatY, { toValue: -10, duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
         Animated.timing(floatY, { toValue: 0,   duration: 2800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
       ]),
     ).start();
@@ -40,20 +38,14 @@ export default function WelcomeScreen() {
     <View style={styles.container}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
 
-      {/* Golden Hour hero gradient */}
+      {/* Background gradient — deep purple to vibrant blue-purple */}
       <LinearGradient
-        colors={Gradients.heroWelcome}
-        locations={[0, 0.22, 0.5, 0.75, 1]}
+        colors={['#0A0118', '#1A0B3E', '#2D1B69', '#4A2B8F', '#6C3FC0']}
+        locations={[0, 0.25, 0.5, 0.75, 1]}
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Ambient glow at bottom */}
-      <LinearGradient
-        colors={['transparent', Colors.duskGlow, 'rgba(232,101,26,0.45)']}
-        style={styles.glowLayer}
-      />
-
-      {/* Floating decorative orbs */}
+      {/* Floating orbs */}
       <Animated.View style={[styles.orb1, { transform: [{ translateY: floatY }] }]}>
         <View style={styles.orbInner1} />
       </Animated.View>
@@ -61,195 +53,131 @@ export default function WelcomeScreen() {
         <View style={styles.orbInner2} />
       </Animated.View>
 
-      {/* Overlay content */}
-      <View style={styles.overlay}>
-        <LinearGradient
-          colors={['transparent', 'rgba(12,5,32,0.72)', 'rgba(12,5,32,0.97)']}
-          locations={[0, 0.3, 0.62]}
-          style={StyleSheet.absoluteFill}
-        />
+      {/* Content — flexbox layout, no absolute overlay */}
+      <View style={styles.content}>
+        {/* Top spacer */}
+        <View style={{ flex: 1 }} />
 
         {/* Logo + branding */}
         <Animated.View style={[styles.logoArea, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>
-          <LinearGradient
-            colors={[Colors.primary, Colors.primaryDark]}
-            style={styles.logoMark}
-          >
-            <Text style={styles.logoIcon}>🌍</Text>
-          </LinearGradient>
-          <Text style={styles.appName}>FamilyQuest</Text>
-          <Text style={styles.tagline}>
-            Your family's perfect trip,{'\n'}built in seconds.
-          </Text>
+          <View style={styles.logoMark}>
+            <Text style={styles.logoIcon}>🧭</Text>
+          </View>
+          <Text style={styles.appName}>Roamly</Text>
+          <Text style={styles.tagline}>Your trip, perfectly mapped.</Text>
+          <Text style={styles.subtitle}>AI-powered itineraries in seconds</Text>
         </Animated.View>
 
-        {/* Feature pills */}
-        <SlideUp delay={600}>
-          <View style={styles.featurePills}>
-            {['🧒 Kid-aware', '♿ Accessible', '🍽️ Dining included', '📄 PDF export'].map((f, i) => (
-              <View key={i} style={styles.featurePill}>
-                <Text style={styles.featurePillText}>{f}</Text>
-              </View>
-            ))}
-          </View>
-        </SlideUp>
+        {/* Social proof */}
+        <Text style={styles.socialProof}>Trusted by 10,000+ travelers worldwide</Text>
+
+        {/* Spacer */}
+        <View style={{ flex: 0.5 }} />
 
         {/* Auth buttons */}
-        <SlideUp delay={800}>
-          <View style={styles.authButtons}>
-            <TouchableOpacity
-              onPress={() => router.push('/auth/login')}
-              style={styles.googleButton}
-              activeOpacity={0.88}
-            >
-              <View style={styles.gIcon}><Text style={styles.gIconText}>G</Text></View>
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </TouchableOpacity>
+        <View style={styles.authButtons}>
+          <TouchableOpacity
+            onPress={() => router.push('/auth/login')}
+            style={styles.googleButton}
+            activeOpacity={0.88}
+          >
+            <View style={styles.gIcon}><Text style={styles.gIconText}>G</Text></View>
+            <Text style={styles.googleButtonText}>Continue with Google</Text>
+          </TouchableOpacity>
 
-            <Button
-              label="Continue with Email"
-              onPress={() => router.push('/auth/login')}
-              variant="outline"
-              style={styles.emailButton}
-              textStyle={{ color: '#fff', fontFamily: Typography.bold }}
-            />
+          <TouchableOpacity
+            onPress={() => router.push('/auth/login')}
+            style={styles.emailButton}
+            activeOpacity={0.88}
+          >
+            <Text style={styles.emailButtonText}>Continue with Email</Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => router.push('/(tabs)')}
-              style={styles.guestButton}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.guestText}>Continue as Guest</Text>
-            </TouchableOpacity>
-          </View>
-        </SlideUp>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)')}
+            style={styles.guestButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.guestText}>Skip — explore as guest</Text>
+          </TouchableOpacity>
+        </View>
 
-        <SlideUp delay={1000}>
-          <Text style={styles.legalText}>
-            By continuing you agree to our Terms of Service and Privacy Policy.
-          </Text>
-        </SlideUp>
+        <Text style={styles.legalText}>
+          By continuing you agree to our Terms of Service and Privacy Policy
+        </Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.dusk },
-  glowLayer: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: H * 0.5,
-  },
-  orb1: {
-    position: 'absolute',
-    top: H * 0.08, left: -60,
-  },
-  orbInner1: {
-    width: 200, height: 200, borderRadius: 100,
-    backgroundColor: 'rgba(61,31,110,0.45)',
-  },
-  orb2: {
-    position: 'absolute',
-    top: H * 0.2, right: -40,
-  },
-  orbInner2: {
-    width: 140, height: 140, borderRadius: 70,
-    backgroundColor: 'rgba(123,63,0,0.35)',
-  },
-  overlay: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: H * 0.80,
+  container: { flex: 1, backgroundColor: '#0A0118' },
+  orb1: { position: 'absolute', top: H * 0.06, left: -50 },
+  orbInner1: { width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(108,63,192,0.35)' },
+  orb2: { position: 'absolute', top: H * 0.22, right: -30 },
+  orbInner2: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(240,90,40,0.20)' },
+  content: {
+    flex: 1,
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing['3xl'],
-    paddingBottom: Platform.OS === 'ios' ? 44 : 32,
+    paddingTop: Platform.OS === 'ios' ? 60 : 44,
+    paddingBottom: Platform.OS === 'ios' ? 44 : 28,
   },
-  logoArea: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-  },
+  logoArea: { alignItems: 'center', marginBottom: Spacing.md },
   logoMark: {
-    width: 72, height: 72,
-    borderRadius: Radius.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: 'rgba(240,90,40,0.15)',
+    borderWidth: 2, borderColor: 'rgba(240,90,40,0.40)',
+    alignItems: 'center', justifyContent: 'center',
     marginBottom: Spacing.md,
-    ...Shadow.glow,
   },
-  logoIcon: { fontSize: 32 },
+  logoIcon: { fontSize: 38 },
   appName: {
-    fontSize: Typography['3xl'],
-    fontFamily: Typography.black,
-    color: '#fff',
-    letterSpacing: -0.5,
+    fontSize: 42, fontFamily: Typography.black,
+    color: '#FFFFFF', letterSpacing: 1,
   },
   tagline: {
-    fontSize: Typography.md,
-    fontFamily: Typography.regular,
-    color: 'rgba(255,255,255,0.55)',
-    textAlign: 'center',
+    fontSize: 18, fontFamily: Typography.semiBold,
+    color: '#FFFFFF', textAlign: 'center',
+    marginTop: 8, lineHeight: 26,
+  },
+  subtitle: {
+    fontSize: 14, fontFamily: Typography.regular,
+    color: 'rgba(255,255,255,0.60)', textAlign: 'center',
     marginTop: 6,
-    lineHeight: 24,
   },
-  featurePills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: Spacing.xl,
+  socialProof: {
+    fontSize: 12, fontFamily: Typography.semiBold,
+    color: 'rgba(255,255,255,0.40)', textAlign: 'center',
+    marginTop: Spacing.md, letterSpacing: 0.5,
   },
-  featurePill: {
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.35)',
-    backgroundColor: 'rgba(245,166,35,0.12)',
-  },
-  featurePillText: {
-    fontSize: Typography.sm,
-    fontFamily: Typography.semiBold,
-    color: Colors.gold,
-  },
-  authButtons: { gap: Spacing.sm, marginBottom: Spacing.md },
+  authButtons: { gap: 12, marginBottom: Spacing.md },
   googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    height: 54,
-    backgroundColor: '#fff',
-    borderRadius: Radius.full,
-    ...Shadow.medium,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, height: 56, backgroundColor: '#FFFFFF',
+    borderRadius: Radius.full, ...Shadow.medium,
   },
   gIcon: {
     width: 24, height: 24, borderRadius: 12,
     backgroundColor: '#4285F4',
     alignItems: 'center', justifyContent: 'center',
   },
-  gIconText: { fontSize: 13, fontFamily: Typography.black, color: '#fff' },
-  googleButtonText: {
-    fontSize: Typography.md,
-    fontFamily: Typography.bold,
-    color: Colors.textDark,
-  },
+  gIconText: { fontSize: 14, fontFamily: Typography.black, color: '#fff' },
+  googleButtonText: { fontSize: 16, fontFamily: Typography.bold, color: '#1C1C2E' },
   emailButton: {
-    borderColor: 'rgba(255,255,255,0.28)',
+    height: 56, alignItems: 'center', justifyContent: 'center',
+    borderRadius: Radius.full,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.30)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  guestButton: { alignItems: 'center', paddingVertical: 14 },
+  emailButtonText: { fontSize: 16, fontFamily: Typography.bold, color: '#FFFFFF' },
+  guestButton: { alignItems: 'center', paddingVertical: 16 },
   guestText: {
-    fontSize: Typography.base,
-    fontFamily: Typography.semiBold,
-    color: 'rgba(255,255,255,0.38)',
-    textDecorationLine: 'underline',
-    textDecorationColor: 'rgba(255,255,255,0.2)',
+    fontSize: 15, fontFamily: Typography.semiBold,
+    color: 'rgba(255,255,255,0.70)',
   },
   legalText: {
-    fontSize: Typography.xs,
-    fontFamily: Typography.regular,
-    color: 'rgba(255,255,255,0.22)',
-    textAlign: 'center',
-    lineHeight: 17,
+    fontSize: 11, fontFamily: Typography.regular,
+    color: 'rgba(255,255,255,0.25)', textAlign: 'center',
+    lineHeight: 16,
   },
 });

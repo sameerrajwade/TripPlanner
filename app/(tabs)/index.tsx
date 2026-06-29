@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, Platform, StatusBar, Alert, Dimensions,
@@ -15,6 +15,7 @@ import { GeneratingOverlay } from '../../components/ui/GeneratingOverlay';
 import { useTripStore, useAuthStore } from '../../store';
 import { Vibe, AccessibilityNeed, TripPace, BudgetLevel, DietaryNeed, CuisinePreference } from '../../types';
 import { generateItinerary, getApiErrorMessage } from '../../lib/api';
+import * as Haptics from 'expo-haptics';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const VIBES: { label: Vibe; icon: string }[] = [
@@ -91,11 +92,12 @@ const CUISINE_OPTIONS: { id: CuisinePreference; label: string; icon: string }[] 
 ];
 
 // ─── Daily limit (mirrors server) ─────────────────────────────────────────────
-const DAILY_LIMIT_GUEST = 5;
+const DAILY_LIMIT_GUEST = 3;
 
 // ─── Contextual emoji based on destination + vibes ────────────────────────────
 function getContextualEmoji(destination: string, vibes: Vibe[]): string {
-  const d = destination.toLowerCase();
+  const d = destination.trim().toLowerCase();
+  if (d.length < 3) return '🧭';
   // Destination keyword overrides vibe
   if (d.includes('bali') || d.includes('maldives') || d.includes('phuket') || d.includes('goa') || d.includes('cancun') || d.includes('bora bora')) return '🏖️';
   if (d.includes('japan') || d.includes('tokyo') || d.includes('kyoto') || d.includes('osaka')) return '⛩️';
@@ -116,7 +118,7 @@ function getContextualEmoji(destination: string, vibes: Vibe[]): string {
   // Vibe-based fallback
   if (vibes.includes('Beach')) return '🏖️';
   if (vibes.includes('Hiking') || vibes.includes('Nature')) return '🏔️';
-  if (vibes.includes('Foodie')) return '🍽️';
+  if (vibes.includes('Foodie')) return '🌮';
   if (vibes.includes('Museums') || vibes.includes('History')) return '🏛️';
   if (vibes.includes('Adventure')) return '🎢';
   if (vibes.includes('Shopping')) return '🛍️';
@@ -164,6 +166,7 @@ export default function PlannerScreen() {
   const [stayLocation,    setStayLocation]    = useState('');
   const [dietaryNeeds,    setDietaryNeeds]    = useState<DietaryNeed[]>([]);
   const [cuisinePrefs,    setCuisinePrefs]    = useState<CuisinePreference[]>(['Local']);
+  const [step,            setStep]            = useState(1);
   const [showSummary,     setShowSummary]     = useState(false);
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
   const [destSuggestions, setDestSuggestions] = useState<string[]>([]);
@@ -184,14 +187,44 @@ export default function PlannerScreen() {
   const toggleCuisine = (id: CuisinePreference) =>
     setCuisinePrefs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  // ── Destination autocomplete (local curated list) ──────────────────────────
+  // ── Destination autocomplete — live geocoding + local fallback ─────────────
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleDestinationChange = (text: string) => {
     setDestination(text);
     if (text.trim().length < 2) { setShowSuggestions(false); return; }
     const q = text.toLowerCase();
-    const matches = POPULAR_DESTINATIONS.filter(d => d.toLowerCase().includes(q)).slice(0, 6);
-    setDestSuggestions(matches);
-    setShowSuggestions(matches.length > 0);
+
+    // Immediate local matches
+    const localMatches = POPULAR_DESTINATIONS.filter(d => d.toLowerCase().includes(q)).slice(0, 3);
+    if (localMatches.length > 0) {
+      setDestSuggestions(localMatches);
+      setShowSuggestions(true);
+    }
+
+    // Debounced live geocoding for anything not in the local list
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(text.trim())}&count=5&language=en&format=json`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const results: string[] = (data?.results ?? []).map((r: any) => {
+          const parts = [r.name];
+          if (r.admin1) parts.push(r.admin1);
+          if (r.country) parts.push(r.country);
+          return parts.join(', ');
+        });
+        if (results.length > 0) {
+          // Merge local + remote, deduplicate
+          const merged = [...new Set([...localMatches, ...results])].slice(0, 6);
+          setDestSuggestions(merged);
+          setShowSuggestions(true);
+        }
+      } catch {}
+    }, 300);
   };
 
   const adjustKids = (delta: number) => {
@@ -212,11 +245,12 @@ export default function PlannerScreen() {
 
   // Show summary card before generating
   const handleBuildPress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!canGenerate) return;
     if (isGuest && remaining <= 0) {
       Alert.alert(
         'Daily limit reached',
-        'Guest accounts can generate 5 itineraries per day. Sign in for a higher limit.',
+        'Guest accounts can generate 3 itineraries per day. Sign in for a higher limit.',
         [
           { text: 'Sign in', onPress: () => router.push('/auth/login') },
           { text: 'OK', style: 'cancel' },
@@ -279,7 +313,6 @@ export default function PlannerScreen() {
           <View style={styles.headerRow}>
             <View>
               <Text style={styles.headerTitle}>Plan a Trip {getContextualEmoji(destination, selectedVibes)}</Text>
-              <Text style={styles.headerSub}>Tell us about your adventure</Text>
             </View>
             {isGuest && (
               <View style={[styles.limitBadge, remaining <= 1 && styles.limitBadgeLow]}>
@@ -298,6 +331,19 @@ export default function PlannerScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Progress bar */}
+        <View style={styles.progressBar}>
+          {[1, 2, 3].map(s => (
+            <View key={s} style={styles.progressStep}>
+              <View style={[styles.progressDot, s <= step && styles.progressDotActive]} />
+              {s < 3 && <View style={[styles.progressLine, s < step && styles.progressLineActive]} />}
+            </View>
+          ))}
+          <Text style={styles.progressLabel}>Step {step} of 3</Text>
+        </View>
+
+        {/* ── Step 1: Essentials ── */}
+        {step === 1 && (<>
         {/* Destination */}
         <SlideUp delay={80}>
           <SectionHeader title="Where to?" />
@@ -359,7 +405,7 @@ export default function PlannerScreen() {
 
         {/* Dates */}
         <SlideUp delay={160}>
-          <SectionHeader title="When?" subtitle="Tap to choose your dates" style={{ marginTop: Spacing.xl }} />
+          <SectionHeader title="When?" style={{ marginTop: Spacing.xl }} />
           <View style={styles.dateStack}>
             <PressScale onPress={() => setShowStartPicker(true)}>
               <View style={[styles.inputWrap, styles.dateBox]}>
@@ -485,9 +531,20 @@ export default function PlannerScreen() {
           </GlassCard>
         </SlideUp>
 
+        {/* Step 1 Next button */}
+        <View style={styles.stepNav}>
+          <View />
+          <TouchableOpacity style={styles.stepNavBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setStep(2); }}>
+            <Text style={styles.stepNavBtnText}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+        </>)}
+
+        {/* ── Step 2: Preferences ── */}
+        {step === 2 && (<>
         {/* Trip Pace */}
         <SlideUp delay={300}>
-          <SectionHeader title="Trip pace?" subtitle="How busy do you want each day?" style={{ marginTop: Spacing.xl }} />
+          <SectionHeader title="Trip pace?" style={{ marginTop: Spacing.xl }} />
           <View style={styles.paceRow}>
             {PACE_OPTIONS.map(opt => (
               <TouchableOpacity
@@ -559,10 +616,23 @@ export default function PlannerScreen() {
           </View>
         </SlideUp>
 
+        {/* Step 2 nav buttons */}
+        <View style={styles.stepNav}>
+          <TouchableOpacity style={styles.stepNavBtnBack} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setStep(1); }}>
+            <Text style={styles.stepNavBtnBackText}>← Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.stepNavBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setStep(3); }}>
+            <Text style={styles.stepNavBtnText}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+        </>)}
+
+        {/* ── Step 3: Dietary & Cuisine ── */}
+        {step === 3 && (<>
         {/* Dining & cuisine (always included — dietary/cuisine prefs feed the AI) */}
         <SlideUp delay={500}>
           <GlassCard style={styles.groupCard}>
-            <SectionHeader title="🥗 Dietary needs" subtitle="We'll filter dining options to match" />
+            <SectionHeader title="🥗 Dietary needs" subtitle="We'll filter dining options to match" compact />
             <View style={styles.chipWrap}>
               {DIETARY_OPTIONS.map(d => (
                 <TouchableOpacity
@@ -576,7 +646,7 @@ export default function PlannerScreen() {
               ))}
             </View>
 
-            <SectionHeader title="🌍 Cuisine preferences" subtitle="Pick all that appeal — 2-3 restaurant options per meal" style={{ marginTop: Spacing.lg }} />
+            <SectionHeader title="🌍 Cuisine preferences" subtitle="Pick all that appeal — 2-3 restaurant options per meal" compact style={{ marginTop: Spacing.lg }} />
             <View style={styles.chipWrap}>
               {CUISINE_OPTIONS.map(c => (
                 <TouchableOpacity
@@ -591,6 +661,14 @@ export default function PlannerScreen() {
             </View>
           </GlassCard>
         </SlideUp>
+
+        {/* Step 3 Back + CTA */}
+        <View style={styles.stepNav}>
+          <TouchableOpacity style={styles.stepNavBtnBack} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setStep(2); }}>
+            <Text style={styles.stepNavBtnBackText}>← Back</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+        </View>
 
         {/* CTA */}
         <SlideUp delay={560}>
@@ -618,6 +696,7 @@ export default function PlannerScreen() {
             )}
           </View>
         </SlideUp>
+        </>)}
       </ScrollView>
 
       {/* ── Pre-generation summary card ───────────────────────────────────── */}
@@ -788,10 +867,10 @@ const styles = StyleSheet.create({
   kidAgeChipLabel: { fontSize: Typography.xs, fontFamily: Typography.semiBold, color: Colors.textLight },
   kidAgeStepper:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
   kidAgeBtn: {
-    width: 26, height: 26, borderRadius: 13, backgroundColor: Colors.surface,
+    width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.surface,
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(232,101,26,0.20)',
   },
-  kidAgeBtnText: { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.primary, lineHeight: 18 },
+  kidAgeBtnText: { fontSize: Typography.md, fontFamily: Typography.bold, color: Colors.primary, lineHeight: 22 },
   kidAgeValue:   { fontSize: Typography.base, fontFamily: Typography.extraBold, color: Colors.textDark, minWidth: 22, textAlign: 'center' },
 
   // Pace
@@ -806,7 +885,7 @@ const styles = StyleSheet.create({
   paceIcon:        { fontSize: 22, marginBottom: 4 },
   paceLabel:       { fontSize: Typography.sm, fontFamily: Typography.bold, color: Colors.textDark, textAlign: 'center' },
   paceLabelActive: { color: '#fff' },
-  paceDesc:        { fontSize: 10, fontFamily: Typography.regular, color: Colors.textLight, textAlign: 'center', marginTop: 4, lineHeight: 13 },
+  paceDesc:        { fontSize: Typography.xs, fontFamily: Typography.regular, color: Colors.textLight, textAlign: 'center', marginTop: 4, lineHeight: 14 },
   paceDescActive:  { color: 'rgba(255,255,255,0.75)' },
 
   // Budget
@@ -821,7 +900,7 @@ const styles = StyleSheet.create({
   budgetIcon:        { fontSize: 22, marginBottom: 4 },
   budgetLabel:       { fontSize: Typography.sm, fontFamily: Typography.bold, color: Colors.textDark, textAlign: 'center' },
   budgetLabelActive: { color: '#fff' },
-  budgetDesc:        { fontSize: 10, fontFamily: Typography.regular, color: Colors.textLight, textAlign: 'center', marginTop: 4, lineHeight: 13 },
+  budgetDesc:        { fontSize: Typography.xs, fontFamily: Typography.regular, color: Colors.textLight, textAlign: 'center', marginTop: 4, lineHeight: 14 },
   budgetDescActive:  { color: 'rgba(255,255,255,0.75)' },
 
   accessRow: { flexDirection: 'row', gap: 10 },
@@ -871,6 +950,29 @@ const styles = StyleSheet.create({
   filterChipIcon:       { fontSize: 14 },
   filterChipText:       { fontSize: Typography.sm, fontFamily: Typography.semiBold, color: Colors.textMid },
   filterChipTextActive: { color: '#fff' },
+
+  // Progress bar
+  progressBar: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.lg, paddingHorizontal: Spacing.sm },
+  progressStep: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  progressDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.creamDark, borderWidth: 2, borderColor: 'rgba(240,90,40,0.2)' },
+  progressDotActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  progressLine: { flex: 1, height: 3, backgroundColor: Colors.creamDark, marginHorizontal: 4 },
+  progressLineActive: { backgroundColor: Colors.primary },
+  progressLabel: { fontSize: Typography.xs, fontFamily: Typography.semiBold, color: Colors.textMid, marginLeft: Spacing.sm },
+
+  // Step navigation
+  stepNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.xl },
+  stepNavBtn: {
+    paddingHorizontal: Spacing.lg, paddingVertical: 14,
+    borderRadius: Radius.full, backgroundColor: Colors.primary,
+    ...Shadow.soft,
+  },
+  stepNavBtnText: { fontSize: Typography.base, fontFamily: Typography.bold, color: '#fff' },
+  stepNavBtnBack: {
+    paddingHorizontal: Spacing.lg, paddingVertical: 14,
+    borderRadius: Radius.full, borderWidth: 2, borderColor: 'rgba(240,90,40,0.25)',
+  },
+  stepNavBtnBackText: { fontSize: Typography.base, fontFamily: Typography.bold, color: Colors.textMid },
 
   ctaWrap:   { marginTop: Spacing.xl },
   ctaButton: { ...Shadow.glow },

@@ -8,7 +8,7 @@ import { TripInput, Itinerary, DayPlan, Activity } from '../types';
 // single shared "anon" counter for every guest on the planet. Instead we mint
 // a random UUID once per install, persist it, and send it explicitly so each
 // device gets its own daily quota.
-const DEVICE_ID_KEY = 'familyquest_device_id';
+const DEVICE_ID_KEY = 'roamly_device_id';
 let cachedDeviceId: string | null = null;
 
 async function getDeviceId(): Promise<string> {

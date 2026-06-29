@@ -86,14 +86,9 @@ export default function LoginScreen() {
     <View style={styles.container}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
       <LinearGradient
-        colors={Gradients.heroWelcome}
-        locations={[0, 0.22, 0.5, 0.75, 1]}
+        colors={['#0A0118', '#1A0B3E', '#2D1B69', '#4A2B8F', '#6C3FC0']}
+        locations={[0, 0.25, 0.5, 0.75, 1]}
         style={StyleSheet.absoluteFill}
-      />
-      {/* Ambient glow */}
-      <LinearGradient
-        colors={['transparent', 'rgba(232,101,26,0.25)']}
-        style={styles.glow}
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
